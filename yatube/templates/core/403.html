@@ -1,0 +1,8 @@
+# templates/core/403.html
+{% extends "base.html" %}
+{% block title %}Custom 403{% endblock %}
+{% block content %}
+  <h1>Custom 403</h1>
+  <p>На страницу с адресом {{ path }} доступ запрещён</p>
+  <a href="{% url 'posts:index' %}"> Идите на главную</a>
+{% endblock %}
