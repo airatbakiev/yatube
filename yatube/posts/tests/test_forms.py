@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from posts.models import Group, Post, Comment
+from posts.models import Comment, Group, Post
 
 User = get_user_model()
 
@@ -98,7 +98,7 @@ class CommentsTests(TestCase):
         )
         cls.comment = Comment.objects.create(
             author=cls.user,
-            post = cls.post,
+            post=cls.post,
             text='Тестовый комментарий'
         )
 
@@ -124,7 +124,7 @@ class CommentsTests(TestCase):
         )
         self.assertRedirects(response, add_comment_redirect)
         self.assertEqual(Comment.objects.count(), comments_count)
-    
+
     def test_comment_output_on_page(self):
         '''Созданный комментарий появляется на странице поста'''
         response = self.guest_client.get(

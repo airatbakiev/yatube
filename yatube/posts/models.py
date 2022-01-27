@@ -1,4 +1,3 @@
-from cgitb import text
 from django.contrib.auth import get_user_model
 from django.db import models
 
@@ -35,7 +34,7 @@ class Post(models.Model):
     image = models.ImageField(
         'Картинка',
         upload_to='posts/',
-        blank = True
+        blank=True
     )
 
     class Meta:
@@ -71,6 +70,7 @@ class Comment(models.Model):
     def __str__(self) -> str:
         return self.text[:15]
 
+
 class Follow(models.Model):
     user = models.ForeignKey(
         User,
@@ -84,6 +84,7 @@ class Follow(models.Model):
         on_delete=models.CASCADE,
         related_name='following'
     )
+    
     class Meta:
         verbose_name = 'Подписка'
         verbose_name_plural = 'Подписки'

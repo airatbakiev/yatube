@@ -1,12 +1,11 @@
-from tkinter import N
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .forms import PostForm, CommentForm
-from .models import Follow, Group, Post, Comment
+from .forms import CommentForm, PostForm
+from .models import Comment, Follow, Group, Post
 
 User = get_user_model()
 
@@ -100,6 +99,7 @@ def post_edit(request, post_id):
     }
     return render(request, 'posts/create_post.html', context)
 
+
 @login_required
 def add_comment(request, post_id):
     post = get_object_or_404(Post, pk=post_id)
@@ -110,6 +110,7 @@ def add_comment(request, post_id):
         comment.post = post
         comment.save()
     return redirect('posts:post_detail', post_id=post_id)
+
 
 @login_required
 def follow_index(request):
@@ -124,6 +125,7 @@ def follow_index(request):
     }
     return render(request, template, context)
 
+
 @login_required
 def profile_follow(request, username):
     user = request.user
@@ -137,7 +139,8 @@ def profile_follow(request, username):
             user=user,
             author=author,
         )
-    return redirect('posts:profile', username = author.username)
+    return redirect('posts:profile', username=author.username)
+
 
 @login_required
 def profile_unfollow(request, username):
@@ -148,4 +151,4 @@ def profile_unfollow(request, username):
         author=author
     )
     unfollowing.delete()
-    return redirect('posts:profile', username = author.username)
+    return redirect('posts:profile', username=author.username)
