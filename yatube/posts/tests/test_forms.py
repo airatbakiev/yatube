@@ -1,14 +1,24 @@
+from cgitb import text
+from distutils.util import change_root
+import shutil
+import tempfile
+
 from http import HTTPStatus
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from posts.models import Comment, Group, Post
 
 User = get_user_model()
 
+TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
 
+
+@override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
 class PostsFormsTests(TestCase):
     @classmethod
     def setUpClass(cls):
@@ -25,6 +35,11 @@ class PostsFormsTests(TestCase):
             group=cls.group
         )
 
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
+
     def setUp(self):
         self.guest_client = Client()
         self.authorized_client = Client()
@@ -33,9 +48,23 @@ class PostsFormsTests(TestCase):
     def test_create_post(self):
         '''Создаётся ли в БД пост'''
         posts_count = Post.objects.count()
+        small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x02\x00'
+            b'\x01\x00\x80\x00\x00\x00\x00\x00'
+            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
+            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
+            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
+            b'\x0A\x00\x3B'
+        )
+        uploaded = SimpleUploadedFile(
+            name='small1.gif',
+            content=small_gif,
+            content_type='image/gif'
+        )
         form_data = {
             'text': 'Тестовый пост',
-            'group': self.group.pk
+            'group': self.group.pk,
+            'image': uploaded,
         }
         response = self.authorized_client.post(
             reverse('posts:post_create'),
@@ -48,21 +77,36 @@ class PostsFormsTests(TestCase):
         self.assertEqual(new_post.text, form_data['text'])
         self.assertEqual(new_post.group.pk, form_data['group'])
         self.assertEqual(new_post.author, self.user)
+        self.assertEqual(new_post.image, 'posts/small1.gif')
 
     def test_change_post_in_db_after_edit(self):
         '''После редактирования и отправки формы пост изменяется в БД'''
+        small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x02\x00'
+            b'\x01\x00\x80\x00\x00\x00\x00\x00'
+            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
+            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
+            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
+            b'\x0A\x00\x3B'
+        )
+        uploaded = SimpleUploadedFile(
+            name='small2.gif',
+            content=small_gif,
+            content_type='image/gif'
+        )
         form_data = {
             'text': 'Новый тестовый пост',
-            'group': self.group.pk
+            'group': self.group.pk,
+            'image': uploaded,
         }
         self.authorized_client.post(
             reverse('posts:post_edit', args=(str(self.post.id))),
             data=form_data,
             follow=True
         )
-        self.assertTrue(
-            Post.objects.filter(text=form_data['text']).exists()
-        )
+        change_post = Post.objects.last()
+        self.assertEqual(change_post.text, form_data['text'])
+        self.assertEqual(change_post.image, 'posts/small2.gif')
 
     def test_guest_client_not_create_and_redirect(self):
         '''Постить может только авторизованный'''
@@ -96,11 +140,6 @@ class CommentsTests(TestCase):
             text='Пост_1 пользователя test_user',
             group=cls.group
         )
-        cls.comment = Comment.objects.create(
-            author=cls.user,
-            post=cls.post,
-            text='Тестовый комментарий'
-        )
 
     def setUp(self):
         self.guest_client = Client()
@@ -127,7 +166,18 @@ class CommentsTests(TestCase):
 
     def test_comment_output_on_page(self):
         '''Созданный комментарий появляется на странице поста'''
-        response = self.guest_client.get(
+        comments_count = Comment.objects.count()
+        form_data = {
+            'text': 'Тестовый комментарий авторизованного пользователя'
+        }
+        self.authorized_client.post(
+            reverse('posts:add_comment', kwargs={'post_id': self.post.id}),
+            data=form_data,
+            follow=True
+        )
+        self.assertEqual(Comment.objects.count(), comments_count + 1)
+        response = self.authorized_client.get(
             reverse('posts:post_detail', kwargs={'post_id': self.post.id})
         )
-        self.assertIn(self.comment, response.context['comments'])
+        comments = response.context['comments']
+        self.assertEqual(comments.all()[0].text, form_data['text'])

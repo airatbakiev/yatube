@@ -4,6 +4,7 @@ import tempfile
 from django import forms
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
@@ -342,6 +343,7 @@ class ImageInContextTests(TestCase):
         self.assertEqual(post_from_response.image, 'posts/small.gif')
 
 
+@override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
 class CacheTests(TestCase):
     @classmethod
     def setUpClass(cls):
@@ -352,30 +354,60 @@ class CacheTests(TestCase):
             slug='test-slug',
             description='Тестовое описание',
         )
-        cls.post_1 = Post.objects.create(
-            author=cls.user,
-            text='Пост_1 пользователя test_user',
-            group=cls.group,
-        )
-        cls.post_2 = Post.objects.create(
-            author=cls.user,
-            text='Пост_2 пользователя test_user',
-            group=cls.group,
-        )
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
 
     def setUp(self):
         self.guest_client = Client()
+        self.authorized_client = Client()
+        self.authorized_client.force_login(self.user)
 
     def test_cache_index(self):
         '''По имени index выводится кеш'''
+        # Смотрим на страницу перед созданием поста
         response1 = self.guest_client.get(reverse('posts:index'))
         content1 = response1.content
-        Post.objects.first().delete()
+        # Создаём пост
+        small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x02\x00'
+            b'\x01\x00\x80\x00\x00\x00\x00\x00'
+            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
+            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
+            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
+            b'\x0A\x00\x3B'
+        )
+        uploaded = SimpleUploadedFile(
+            name='small3.gif',
+            content=small_gif,
+            content_type='image/gif'
+        )
+        form_data = {
+            'text': 'Тестовый пост',
+            'group': self.group.pk,
+            'image': uploaded,
+        }
+        self.authorized_client.post(
+            reverse('posts:post_create'),
+            data=form_data,
+            follow=True
+        )
+        # Смотрим на страницу после создания поста
         response2 = self.guest_client.get(reverse('posts:index'))
         content2 = response2.content
+        # Убеждаемся, что на странице ничего не изменилось
         self.assertEqual(content1, content2)
+        # Чистим кэш
+        cache.clear()
+        # Смотрим на страницу после очистки кэша
+        response3 = self.guest_client.get(reverse('posts:index'))
+        content3 = response3.content
+        self.assertNotEqual(content3, content2)
 
 
+@override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
 class FollowTests(TestCase):
     @classmethod
     def setUpClass(cls):
@@ -388,18 +420,18 @@ class FollowTests(TestCase):
             slug='test-slug',
             description='Тестовое описание',
         )
-        cls.post_1 = Post.objects.create(
-            author=cls.user,
-            text='Пост_1 пользователя test_user_1',
-            group=cls.group,
-        )
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
 
     def setUp(self):
         self.authorized_client = Client()
         self.authorized_client.force_login(self.second_user)
 
-    def test_follow_unfollow(self):
-        '''Авторизованный пользователь может подписаться и отписаться'''
+    def test_authorized_client_can_follow(self):
+        '''Авторизованный пользователь может подписаться'''
         # пользователь second_user подписывается на автора user
         count_start = Follow.objects.filter(user=self.second_user).count()
         self.authorized_client.get(
@@ -411,7 +443,30 @@ class FollowTests(TestCase):
         )
         count_follow = Follow.objects.filter(user=self.second_user).count()
         self.assertEqual(count_start, count_follow - 1)
+
+    def test_authorized_client_can_unfollow(self):
+        '''Авторизованный пользователь может отписаться'''
+        # теперь second_user подписывается на автора third_user
+        Follow.objects.create(
+            user=self.second_user,
+            author=self.third_user
+        )
+        count_start = Follow.objects.filter(user=self.second_user).count()
+        # second_user отписывается от third_user
+        self.authorized_client.get(
+            reverse(
+                'posts:profile_unfollow', kwargs={
+                    'username': self.third_user.username
+                }
+            )
+        )
+        count_follow = Follow.objects.filter(user=self.second_user).count()
+        self.assertEqual(count_start, count_follow + 1)
+
+    def test_follow_self_account(self):
+        '''Авторизованный пользователь не может подписаться на себя'''
         # пользователь second_user пытается подписаться на себя
+        count_start = Follow.objects.filter(user=self.second_user).count()
         self.authorized_client.get(
             reverse(
                 'posts:profile_follow', kwargs={
@@ -420,21 +475,56 @@ class FollowTests(TestCase):
             )
         )
         count_self = Follow.objects.filter(user=self.second_user).count()
-        self.assertEqual(count_follow, count_self)
-        # пользователь second_user отписывается от автора user
+        self.assertEqual(count_self, count_start)
+
+    def test_post_output_on_follow_pages(self):
+        '''Новый пост появляется в ленте подписчика'''
+        # second_user подписывается на автора third_user
         self.authorized_client.get(
             reverse(
-                'posts:profile_unfollow', kwargs={
-                    'username': self.user.username
+                'posts:profile_follow', kwargs={
+                    'username': self.third_user.username
                 }
             )
         )
-        count_unfollow = Follow.objects.filter(user=self.second_user).count()
-        self.assertEqual(count_unfollow, count_start)
+        # авторизуется third_user и публикует пост
+        self.authorized_client.force_login(self.third_user)
+        small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x02\x00'
+            b'\x01\x00\x80\x00\x00\x00\x00\x00'
+            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
+            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
+            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
+            b'\x0A\x00\x3B'
+        )
+        uploaded = SimpleUploadedFile(
+            name='small4.gif',
+            content=small_gif,
+            content_type='image/gif'
+        )
+        form_data = {
+            'text': 'Тестовый пост third_user',
+            'group': self.group.pk,
+            'image': uploaded,
+        }
+        self.authorized_client.post(
+            reverse('posts:post_create'),
+            data=form_data,
+            follow=True
+        )
+        # авторизуется second_user (подписчик) и смотрит свою ленту
+        self.authorized_client.force_login(self.second_user)
+        follow_response = self.authorized_client.get(
+            reverse('posts:follow_index')
+        )
+        post_list = follow_response.context['page_obj']
+        self.assertEqual(post_list[0].text, form_data['text'])
+        self.assertEqual(post_list[0].group.id, form_data['group'])
+        self.assertEqual(post_list[0].image, 'posts/small4.gif')
 
-    def test_post_output_on_follow_pages(self):
-        '''Новый пост появляется в нужных лентах и не появляется в ненужных'''
-        # second_user подписывается на автора user
+    def test_post_not_exist_on_unfollow_pages(self):
+        # авторизуется third_user и подписывается на user
+        self.authorized_client.force_login(self.third_user)
         self.authorized_client.get(
             reverse(
                 'posts:profile_follow', kwargs={
@@ -442,17 +532,35 @@ class FollowTests(TestCase):
                 }
             )
         )
-        # подписчик second_user смотрит свою ленту
+        # авторизуется user и публикует пост
+        self.authorized_client.force_login(self.user)
+        small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x02\x00'
+            b'\x01\x00\x80\x00\x00\x00\x00\x00'
+            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
+            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
+            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
+            b'\x0A\x00\x3B'
+        )
+        uploaded = SimpleUploadedFile(
+            name='small5.gif',
+            content=small_gif,
+            content_type='image/gif'
+        )
+        form_data = {
+            'text': 'Тестовый пост user',
+            'group': self.group.pk,
+            'image': uploaded,
+        }
+        self.authorized_client.post(
+            reverse('posts:post_create'),
+            data=form_data,
+            follow=True
+        )
+        # авторизуется second_user (не подписчик) и смотрит свою ленту
         self.authorized_client.force_login(self.second_user)
-        follow_response = self.authorized_client.get(
+        response = self.authorized_client.get(
             reverse('posts:follow_index')
         )
-        post_list = follow_response.context['page_obj']
-        self.assertIn(self.post_1, post_list)
-        # пользователь third_user (не подписчик) смотрит свою ленту
-        self.authorized_client.force_login(self.third_user)
-        follow_response = self.authorized_client.get(
-            reverse('posts:follow_index')
-        )
-        post_list = follow_response.context['page_obj']
-        self.assertNotIn(self.post_1, post_list)
+        post_list = response.context['page_obj']
+        self.assertEqual(len(post_list), 0)

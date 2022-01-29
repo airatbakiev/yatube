@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import models
+from django.db.models import UniqueConstraint
 
 
 class Group(models.Model):
@@ -88,3 +89,4 @@ class Follow(models.Model):
     class Meta:
         verbose_name = 'Подписка'
         verbose_name_plural = 'Подписки'
+        UniqueConstraint(fields=['author', 'user'], name='unique_follow')

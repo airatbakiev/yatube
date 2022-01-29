@@ -58,6 +58,7 @@ class PostURLTests(TestCase):
             f'/posts/{self.post.id}/': 'posts/post_detail.html',
             '/create/': 'posts/create_post.html',
             f'/posts/{self.post.id}/edit/': 'posts/create_post.html',
+            '/follow/': 'posts/follow.html',
         }
         for address, template in urls_list.items():
             with self.subTest(address=address):
@@ -71,9 +72,12 @@ class PostURLTests(TestCase):
         create_redir = '/auth/login/?next=/create/'
         edit_path = f'/posts/{self.post.id}/edit/'
         edit_redir = f'/auth/login/?next=/posts/{self.post.id}/edit/'
+        follow_path = '/follow/'
+        follow_redir = '/auth/login/?next=/follow/'
         urls_redirect = {
             create_path: create_redir,
             edit_path: edit_redir,
+            follow_path: follow_redir
         }
         for address, redirect_address in urls_redirect.items():
             with self.subTest(address=address):
