@@ -1,5 +1,3 @@
-from cgitb import text
-from distutils.util import change_root
 import shutil
 import tempfile
 
