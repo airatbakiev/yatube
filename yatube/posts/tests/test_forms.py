@@ -178,4 +178,4 @@ class CommentsTests(TestCase):
             reverse('posts:post_detail', kwargs={'post_id': self.post.id})
         )
         comments = response.context['comments']
-        self.assertEqual(comments.all()[0].text, form_data['text'])
+        self.assertEqual(comments.first().text, form_data['text'])

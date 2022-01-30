@@ -1,5 +1,6 @@
 import shutil
 import tempfile
+from tokenize import group
 
 from django import forms
 from django.conf import settings
@@ -316,9 +317,10 @@ class ImageInContextTests(TestCase):
             data=form_data,
             follow=True
         )
-        self.assertEqual(Post.objects.count(), posts_count + 1)
+        posts = Post.objects.all()
+        self.assertEqual(posts.count(), posts_count + 1)
         self.assertTrue(
-            Post.objects.filter(
+            posts.filter(
                 text=form_data['text'],
                 image='posts/small.gif'
             ).exists()
@@ -336,8 +338,9 @@ class ImageInContextTests(TestCase):
                 self.assertEqual(
                     post_from_response.image, 'posts/small.gif'
                 )
+        post_index = str(posts.first().id)
         response = self.authorized_client.get(
-            reverse('posts:post_detail', kwargs={'post_id': '1'})
+            reverse('posts:post_detail', kwargs={'post_id': post_index})
         )
         post_from_response = response.context['post']
         self.assertEqual(post_from_response.image, 'posts/small.gif')
@@ -480,84 +483,38 @@ class FollowTests(TestCase):
     def test_post_output_on_follow_pages(self):
         '''Новый пост появляется в ленте подписчика'''
         # second_user подписывается на автора third_user
-        self.authorized_client.get(
-            reverse(
-                'posts:profile_follow', kwargs={
-                    'username': self.third_user.username
-                }
-            )
+        Follow.objects.create(
+            user=self.second_user,
+            author=self.third_user
         )
-        # авторизуется third_user и публикует пост
-        self.authorized_client.force_login(self.third_user)
-        small_gif = (
-            b'\x47\x49\x46\x38\x39\x61\x02\x00'
-            b'\x01\x00\x80\x00\x00\x00\x00\x00'
-            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
-            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
-            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
-            b'\x0A\x00\x3B'
+        # third_user публикует пост
+        post = Post.objects.create(
+            author=self.third_user,
+            text='Тестовый пост third_user',
+            group=self.group
         )
-        uploaded = SimpleUploadedFile(
-            name='small4.gif',
-            content=small_gif,
-            content_type='image/gif'
-        )
-        form_data = {
-            'text': 'Тестовый пост third_user',
-            'group': self.group.pk,
-            'image': uploaded,
-        }
-        self.authorized_client.post(
-            reverse('posts:post_create'),
-            data=form_data,
-            follow=True
-        )
-        # авторизуется second_user (подписчик) и смотрит свою ленту
-        self.authorized_client.force_login(self.second_user)
+        # second_user (подписчик) смотрит свою ленту
         follow_response = self.authorized_client.get(
             reverse('posts:follow_index')
         )
         post_list = follow_response.context['page_obj']
-        self.assertEqual(post_list[0].text, form_data['text'])
-        self.assertEqual(post_list[0].group.id, form_data['group'])
-        self.assertEqual(post_list[0].image, 'posts/small4.gif')
+        self.assertEqual(post_list[0].text, post.text)
+        self.assertEqual(post_list[0].group.id, post.group.id)
+        self.assertEqual(post_list[0].author, post.author)
 
     def test_post_not_exist_on_unfollow_pages(self):
-        # авторизуется third_user и подписывается на user
-        self.authorized_client.force_login(self.third_user)
-        self.authorized_client.get(
-            reverse(
-                'posts:profile_follow', kwargs={
-                    'username': self.user.username
-                }
-            )
+        # third_user подписывается на user
+        Follow.objects.create(
+            user=self.third_user,
+            author=self.user
         )
-        # авторизуется user и публикует пост
-        self.authorized_client.force_login(self.user)
-        small_gif = (
-            b'\x47\x49\x46\x38\x39\x61\x02\x00'
-            b'\x01\x00\x80\x00\x00\x00\x00\x00'
-            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
-            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
-            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
-            b'\x0A\x00\x3B'
+        # user публикует пост
+        Post.objects.create(
+            author=self.user,
+            text='Тестовый пост user',
+            group=self.group
         )
-        uploaded = SimpleUploadedFile(
-            name='small5.gif',
-            content=small_gif,
-            content_type='image/gif'
-        )
-        form_data = {
-            'text': 'Тестовый пост user',
-            'group': self.group.pk,
-            'image': uploaded,
-        }
-        self.authorized_client.post(
-            reverse('posts:post_create'),
-            data=form_data,
-            follow=True
-        )
-        # авторизуется second_user (не подписчик) и смотрит свою ленту
+        # second_user (не подписчик) смотрит свою ленту
         self.authorized_client.force_login(self.second_user)
         response = self.authorized_client.get(
             reverse('posts:follow_index')
