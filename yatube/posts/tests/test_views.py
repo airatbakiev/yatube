@@ -1,6 +1,5 @@
 import shutil
 import tempfile
-from tokenize import group
 
 from django import forms
 from django.conf import settings
@@ -410,7 +409,6 @@ class CacheTests(TestCase):
         self.assertNotEqual(content3, content2)
 
 
-@override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
 class FollowTests(TestCase):
     @classmethod
     def setUpClass(cls):
@@ -423,11 +421,6 @@ class FollowTests(TestCase):
             slug='test-slug',
             description='Тестовое описание',
         )
-
-    @classmethod
-    def tearDownClass(cls):
-        super().tearDownClass()
-        shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
 
     def setUp(self):
         self.authorized_client = Client()
