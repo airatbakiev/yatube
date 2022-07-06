@@ -1,3 +1,59 @@
-# hw05_final
+### Социальная сеть Yatube
 
-[![CI](https://github.com/yandex-praktikum/hw05_final/actions/workflows/python-app.yml/badge.svg?branch=master)](https://github.com/yandex-praktikum/hw05_final/actions/workflows/python-app.yml)
+## Описание
+
+Это практическое задание, выполненное при освоении фреймворка Django.
+
+## Результат
+
+Cоциальная сеть для публикации личных дневников. Это сайт, на котором можно создать свою страницу. Если на нее зайти, то можно посмотреть все записи автора. Пользователи могут заходить на чужие страницы, подписываться на авторов и комментировать их записи. Автор может выбрать имя и уникальный адрес для своей страницы. Записи можно отправить в сообщество и посмотреть там записи разных авторов.
+
+## Стек 
+
+Python 3.7.0
+Django 2.2.16
+SQLite3
+
+## Как запустить проект:
+
+Клонировать репозиторий и перейти в него в командной строке:
+
+```
+git clone https://github.com/airatbakiev/yatube.git
+```
+
+```
+cd yatube
+```
+
+Cоздать и активировать виртуальное окружение:
+
+```
+python -m venv env
+```
+
+```
+source venv/Scripts/activate
+```
+
+Установить зависимости из файла requirements.txt:
+
+```
+python -m pip install --upgrade pip
+```
+
+```
+pip install -r requirements.txt
+```
+
+Выполнить миграции:
+
+```
+python manage.py migrate
+```
+
+Запустить проект:
+
+```
+python manage.py runserver
+```
